@@ -1,6 +1,7 @@
-import 'package:dragable_calendar_entry/utils/time_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
+import '../utils/time_utils.dart';
 
 class EventEditDialog extends StatefulWidget {
   final String? title;
@@ -31,6 +32,7 @@ class _EventEditDialogState extends State<EventEditDialog> {
   late DateTime _startTime;
   late DateTime _endTime;
   late Color _color;
+  final int _timeSnapInterval = 15; // Default to 15 minutes
 
   final List<Color> _availableColors = [
     Colors.blue,
@@ -62,7 +64,9 @@ class _EventEditDialogState extends State<EventEditDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.title != null ? 'Edit Event' : 'New Event'),
+      title: Text(widget.title != null && widget.title != ''
+          ? 'Edit Event'
+          : 'New Event'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -82,8 +86,8 @@ class _EventEditDialogState extends State<EventEditDialog> {
               maxLines: 3,
             ),
             const SizedBox(height: 16),
-            _buildDateTimePicker(
-              label: 'Start Time',
+            _buildDateTimePickers(
+              label: 'Start',
               dateTime: _startTime,
               onChanged: (dateTime) {
                 setState(() {
@@ -91,14 +95,17 @@ class _EventEditDialogState extends State<EventEditDialog> {
 
                   // Ensure end time is after start time
                   if (_endTime.isBefore(_startTime)) {
-                    _endTime = _startTime.add(const Duration(hours: 1));
+                    // Keep the duration the same
+                    Duration duration =
+                        widget.endTime.difference(widget.startTime);
+                    _endTime = _startTime.add(duration);
                   }
                 });
               },
             ),
             const SizedBox(height: 16),
-            _buildDateTimePicker(
-              label: 'End Time',
+            _buildDateTimePickers(
+              label: 'End',
               dateTime: _endTime,
               onChanged: (dateTime) {
                 setState(() {
@@ -106,7 +113,10 @@ class _EventEditDialogState extends State<EventEditDialog> {
 
                   // Ensure start time is before end time
                   if (_startTime.isAfter(_endTime)) {
-                    _startTime = _endTime.subtract(const Duration(hours: 1));
+                    // Keep the duration the same
+                    Duration duration =
+                        widget.endTime.difference(widget.startTime);
+                    _startTime = _endTime.subtract(duration);
                   }
                 });
               },
@@ -140,81 +150,104 @@ class _EventEditDialogState extends State<EventEditDialog> {
     );
   }
 
-  Widget _buildDateTimePicker({
+  Widget _buildDateTimePickers({
     required String label,
     required DateTime dateTime,
     required Function(DateTime) onChanged,
   }) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: InkWell(
-            onTap: () async {
-              final pickedTime = await showTimePicker(
-                context: context,
-                initialTime: TimeOfDay.fromDateTime(dateTime),
-                // Add this to snap to 15-minute intervals in the time picker
-                builder: (BuildContext context, Widget? child) {
-                  return MediaQuery(
-                    data: MediaQuery.of(context).copyWith(
-                      alwaysUse24HourFormat: false,
-                    ),
-                    child: child!,
-                  );
-                },
+        Text('$label Time:', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        // Date picker
+        InkWell(
+          onTap: () async {
+            final pickedDate = await showDatePicker(
+              context: context,
+              initialDate: dateTime,
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+            );
+
+            if (pickedDate != null) {
+              final newDateTime = DateTime(
+                pickedDate.year,
+                pickedDate.month,
+                pickedDate.day,
+                dateTime.hour,
+                dateTime.minute,
               );
-
-              if (pickedTime != null) {
-                DateTime newDateTime = DateTime(
-                  dateTime.year,
-                  dateTime.month,
-                  dateTime.day,
-                  pickedTime.hour,
-                  pickedTime.minute,
-                );
-
-                // Snap the time to the nearest interval (15 minutes)
-                newDateTime = TimeUtils.snapToInterval(newDateTime, 15);
-                onChanged(newDateTime);
-              }
-            },
-            child: InputDecorator(
-              decoration: InputDecoration(
-                labelText: '$label Date',
-              ),
-              child: Text(
-                DateFormat('MMM d, yyyy').format(dateTime),
-              ),
+              onChanged(newDateTime);
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.calendar_today, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  DateFormat('EEE, MMM d, yyyy').format(dateTime),
+                ),
+                const Spacer(),
+                const Icon(Icons.arrow_drop_down),
+              ],
             ),
           ),
         ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: InkWell(
-            onTap: () async {
-              final pickedTime = await showTimePicker(
-                context: context,
-                initialTime: TimeOfDay.fromDateTime(dateTime),
+        const SizedBox(height: 8),
+        // Time picker
+        InkWell(
+          onTap: () async {
+            final pickedTime = await showTimePicker(
+              context: context,
+              initialTime: TimeOfDay.fromDateTime(dateTime),
+              builder: (BuildContext context, Widget? child) {
+                return MediaQuery(
+                  data: MediaQuery.of(context).copyWith(
+                    alwaysUse24HourFormat: false,
+                  ),
+                  child: child!,
+                );
+              },
+            );
+
+            if (pickedTime != null) {
+              DateTime newDateTime = DateTime(
+                dateTime.year,
+                dateTime.month,
+                dateTime.day,
+                pickedTime.hour,
+                pickedTime.minute,
               );
 
-              if (pickedTime != null) {
-                final newDateTime = DateTime(
-                  dateTime.year,
-                  dateTime.month,
-                  dateTime.day,
-                  pickedTime.hour,
-                  pickedTime.minute,
-                );
-                onChanged(newDateTime);
-              }
-            },
-            child: InputDecorator(
-              decoration: InputDecoration(
-                labelText: '$label Time',
-              ),
-              child: Text(
-                DateFormat('h:mm a').format(dateTime),
-              ),
+              // Snap the time to the nearest interval (15 minutes)
+              newDateTime =
+                  TimeUtils.snapToInterval(newDateTime, _timeSnapInterval);
+              onChanged(newDateTime);
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.access_time, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  DateFormat('h:mm a').format(dateTime),
+                ),
+                const Spacer(),
+                const Icon(Icons.arrow_drop_down),
+              ],
             ),
           ),
         ),
@@ -226,7 +259,8 @@ class _EventEditDialogState extends State<EventEditDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Event Color'),
+        const Text('Event Color',
+            style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,

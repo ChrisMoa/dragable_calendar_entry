@@ -113,8 +113,8 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
       final now = DateTime.now();
       if (_lastTapTime != null &&
           now.difference(_lastTapTime!).inMilliseconds < 500) {
-        // This is a double tap
-        _showDuplicateDialog(appointment);
+        // This is a double tap - show options dialog
+        _showEventOptionsDialog(appointment);
         _lastTapTime = null;
       } else {
         _lastTapTime = now;
@@ -128,6 +128,146 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
 
       _showAddEventDialog(snappedTime, endTime);
     }
+  }
+
+  void _handleDragEnd(AppointmentDragEndDetails details) {
+    try {
+      final Appointment appointment = details.appointment as Appointment;
+      String appointmentId = appointment.id.toString();
+
+      // Ensure we have valid times by using the appointment's times if needed
+      final DateTime startTime = appointment.startTime;
+      final DateTime endTime = appointment.endTime;
+
+      // Get the times from the appointment and snap them to intervals
+      final DateTime newStartTime = _snapTimeToInterval(startTime);
+
+      // Calculate the duration to preserve it
+      final Duration eventDuration = endTime.difference(startTime);
+      final DateTime newEndTime = newStartTime.add(eventDuration);
+
+      if (widget.events.any((event) => event.id == appointmentId)) {
+        final EventModel originalEvent = widget.events.firstWhere(
+          (event) => event.id == appointmentId,
+        );
+
+        // Always move the event (no dialog)
+        final updatedEvent = originalEvent.copyWith(
+          start: newStartTime,
+          end: newEndTime,
+        );
+
+        context.read<EventBloc>().add(
+              EventUpdate(updatedEvent),
+            );
+      } else {
+        debugPrint('Event with ID $appointmentId not found');
+      }
+    } catch (e) {
+      debugPrint('Error in drag end: $e');
+    }
+  }
+
+  void _showEventOptionsDialog(Appointment appointment) {
+    try {
+      final originalEvent = widget.events.firstWhere(
+        (event) => event.id == appointment.id.toString(),
+      );
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(originalEvent.title),
+          content: const Text('What would you like to do with this event?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+
+                // Show dialog to edit the event
+                _showEditEventDialog(originalEvent);
+              },
+              child: const Text('Edit'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+
+                // Show dialog to duplicate the event
+                _showDuplicateDialog(appointment);
+              },
+              child: const Text('Duplicate'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+
+                // Show confirmation dialog for deletion
+                _showDeleteConfirmationDialog(originalEvent);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error showing event options dialog: $e');
+    }
+  }
+
+  void _showEditEventDialog(EventModel event) {
+    showDialog(
+      context: context,
+      builder: (context) => EventEditDialog(
+        title: event.title,
+        description: event.description,
+        startTime: event.start,
+        endTime: event.end,
+        color: event.color,
+        onSave: (title, description, start, end, color) {
+          // Snap the times to intervals when editing
+          final snappedStart = _snapTimeToInterval(start);
+          final snappedEnd = _snapTimeToInterval(end);
+
+          final updatedEvent = event.copyWith(
+            title: title,
+            description: description,
+            start: snappedStart,
+            end: snappedEnd,
+            color: color,
+          );
+
+          context.read<EventBloc>().add(EventUpdate(updatedEvent));
+        },
+      ),
+    );
+  }
+
+  void _showDeleteConfirmationDialog(EventModel event) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Event'),
+        content: Text('Are you sure you want to delete "${event.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              context.read<EventBloc>().add(EventDelete(event.id));
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _handleCalendarLongPress(CalendarLongPressDetails details) {
@@ -194,41 +334,6 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
     // Optional: Visual feedback during drag
   }
 
-  void _handleDragEnd(AppointmentDragEndDetails details) {
-    try {
-      final Appointment appointment = details.appointment as Appointment;
-      String appointmentId = appointment.id.toString();
-
-      // Ensure we have valid times by using the appointment's times if needed
-      final DateTime startTime = appointment.startTime;
-      final DateTime endTime = appointment.endTime;
-
-      // Get the times from the appointment and snap them to intervals
-      final DateTime newStartTime = _snapTimeToInterval(startTime);
-
-      // Calculate the duration to preserve it
-      final Duration eventDuration = endTime.difference(startTime);
-      final DateTime newEndTime = newStartTime.add(eventDuration);
-
-      if (widget.events.any((event) => event.id == appointmentId)) {
-        final EventModel originalEvent = widget.events.firstWhere(
-          (event) => event.id == appointmentId,
-        );
-
-        // Show dialog asking whether to move or copy
-        _showMoveOrCopyDialog(
-          originalEvent,
-          newStartTime,
-          newEndTime,
-        );
-      } else {
-        debugPrint('Event with ID $appointmentId not found');
-      }
-    } catch (e) {
-      debugPrint('Error in drag end: $e');
-    }
-  }
-
   void _showAddEventDialog(DateTime startTime, DateTime endTime) {
     showDialog(
       context: context,
@@ -270,16 +375,12 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
           endTime: originalEvent.end,
           color: originalEvent.color,
           onSave: (title, description, start, end, color) {
-            // Snap the times to intervals when duplicating
-            final snappedStart = _snapTimeToInterval(start);
-            final snappedEnd = _snapTimeToInterval(end);
-
             final newEvent = EventModel(
               id: _uuid.v4(),
               title: title,
               description: description,
-              start: snappedStart,
-              end: snappedEnd,
+              start: start, // Use the dates directly from the dialog
+              end: end, // without additional snapping (already done in dialog)
               color: color,
             );
 
@@ -290,55 +391,6 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
     } catch (e) {
       debugPrint('Error showing duplicate dialog: $e');
     }
-  }
-
-  void _showMoveOrCopyDialog(
-    EventModel event,
-    DateTime newStart,
-    DateTime newEnd,
-  ) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Move or Copy?'),
-        content: const Text(
-          'Do you want to move this event or create a copy at the new location?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-
-              // Move the event with snapped times
-              final updatedEvent = event.copyWith(
-                start: newStart,
-                end: newEnd,
-              );
-
-              context.read<EventBloc>().add(
-                    EventUpdate(updatedEvent),
-                  );
-            },
-            child: const Text('Move'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-
-              // Duplicate the event at the new time with snapped times
-              context.read<EventBloc>().add(
-                    EventDuplicate(
-                      event.id,
-                      newStart: newStart,
-                      newEnd: newEnd,
-                    ),
-                  );
-            },
-            child: const Text('Copy'),
-          ),
-        ],
-      ),
-    );
   }
 }
 
