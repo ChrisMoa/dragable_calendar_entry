@@ -1,3 +1,4 @@
+import 'package:dragable_calendar_entry/utils/time_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -149,21 +150,31 @@ class _EventEditDialogState extends State<EventEditDialog> {
         Expanded(
           child: InkWell(
             onTap: () async {
-              final pickedDate = await showDatePicker(
+              final pickedTime = await showTimePicker(
                 context: context,
-                initialDate: dateTime,
-                firstDate: DateTime(2000),
-                lastDate: DateTime(2100),
+                initialTime: TimeOfDay.fromDateTime(dateTime),
+                // Add this to snap to 15-minute intervals in the time picker
+                builder: (BuildContext context, Widget? child) {
+                  return MediaQuery(
+                    data: MediaQuery.of(context).copyWith(
+                      alwaysUse24HourFormat: false,
+                    ),
+                    child: child!,
+                  );
+                },
               );
 
-              if (pickedDate != null) {
-                final newDateTime = DateTime(
-                  pickedDate.year,
-                  pickedDate.month,
-                  pickedDate.day,
-                  dateTime.hour,
-                  dateTime.minute,
+              if (pickedTime != null) {
+                DateTime newDateTime = DateTime(
+                  dateTime.year,
+                  dateTime.month,
+                  dateTime.day,
+                  pickedTime.hour,
+                  pickedTime.minute,
                 );
+
+                // Snap the time to the nearest interval (15 minutes)
+                newDateTime = TimeUtils.snapToInterval(newDateTime, 15);
                 onChanged(newDateTime);
               }
             },

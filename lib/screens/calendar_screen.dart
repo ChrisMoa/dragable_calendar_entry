@@ -1,16 +1,23 @@
+import 'package:dragable_calendar_entry/blocs/event/event_bloc.dart';
+import 'package:dragable_calendar_entry/blocs/event/event_event.dart';
+import 'package:dragable_calendar_entry/blocs/event/event_state.dart';
+import 'package:dragable_calendar_entry/models/event_model.dart';
+import 'package:dragable_calendar_entry/utils/time_utils.dart';
+import 'package:dragable_calendar_entry/widgets/draggable_calendar.dart';
+import 'package:dragable_calendar_entry/widgets/event_edit_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
 
-import '../blocs/event/event_bloc.dart';
-import '../blocs/event/event_event.dart';
-import '../blocs/event/event_state.dart';
-import '../models/event_model.dart';
-import '../widgets/draggable_calendar.dart';
-import '../widgets/event_edit_dialog.dart';
-
-class CalendarScreen extends StatelessWidget {
+class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
+
+  @override
+  State<CalendarScreen> createState() => _CalendarScreenState();
+}
+
+class _CalendarScreenState extends State<CalendarScreen> {
+  int _timeSnapInterval = 15; // Default to 15 minutes
 
   @override
   Widget build(BuildContext context) {
@@ -19,6 +26,7 @@ class CalendarScreen extends StatelessWidget {
         title: const Text('Draggable Calendar'),
         actions: [
           _buildViewSelector(context),
+          _buildIntervalSelector(context),
         ],
       ),
       body: BlocBuilder<EventBloc, EventState>(
@@ -26,6 +34,7 @@ class CalendarScreen extends StatelessWidget {
           return DraggableCalendar(
             calendarViewType: state.calendarView,
             events: state.events,
+            timeSnapInterval: _timeSnapInterval,
           );
         },
       ),
@@ -34,12 +43,49 @@ class CalendarScreen extends StatelessWidget {
           // Show dialog to add a new event
           final now = DateTime.now();
           final startTime = DateTime(now.year, now.month, now.day, now.hour);
-          final endTime = startTime.add(const Duration(hours: 1));
+          final snappedTime =
+              TimeUtils.snapToInterval(startTime, _timeSnapInterval);
+          final endTime = snappedTime.add(Duration(minutes: _timeSnapInterval));
 
-          _showAddEventDialog(context, startTime, endTime);
+          _showAddEventDialog(context, snappedTime, endTime);
         },
         child: const Icon(Icons.add),
       ),
+    );
+  }
+
+  Widget _buildIntervalSelector(BuildContext context) {
+    return PopupMenuButton<int>(
+      icon: const Icon(Icons.timelapse),
+      tooltip: 'Set time interval',
+      initialValue: _timeSnapInterval,
+      onSelected: (int value) {
+        setState(() {
+          _timeSnapInterval = value;
+        });
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: 5,
+          child: Text('5 Minutes'),
+        ),
+        const PopupMenuItem(
+          value: 10,
+          child: Text('10 Minutes'),
+        ),
+        const PopupMenuItem(
+          value: 15,
+          child: Text('15 Minutes'),
+        ),
+        const PopupMenuItem(
+          value: 30,
+          child: Text('30 Minutes'),
+        ),
+        const PopupMenuItem(
+          value: 60,
+          child: Text('1 Hour'),
+        ),
+      ],
     );
   }
 
