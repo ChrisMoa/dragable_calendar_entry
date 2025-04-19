@@ -7,6 +7,7 @@ import '../blocs/event/event_bloc.dart';
 import '../blocs/event/event_event.dart';
 import '../models/event_model.dart';
 import '../utils/time_utils.dart';
+import 'event_brief_info.dart';
 import 'event_edit_dialog.dart';
 
 class DraggableCalendar extends StatefulWidget {
@@ -29,6 +30,9 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
   late CalendarController _calendarController;
   final _uuid = const Uuid();
   DateTime? _lastTapTime;
+  EventModel? _selectedEvent;
+  final Offset _tapPosition = Offset.zero;
+  OverlayEntry? _overlayEntry;
 
   @override
   void initState() {
@@ -38,8 +42,35 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
 
   @override
   void dispose() {
+    _removeOverlay();
     _calendarController.dispose();
     super.dispose();
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  void _showEventBriefInfo(EventModel event) {
+    // Remove any existing overlay first
+    _removeOverlay();
+
+    // Position the popup in the center of the screen with a slight offset
+    final screenSize = MediaQuery.of(context).size;
+    final position = Offset(screenSize.width * 0.2, screenSize.height * 0.3);
+
+    // Create the overlay entry
+    _overlayEntry = OverlayEntry(
+      builder: (context) => EventBriefInfo(
+        event: event,
+        position: position,
+        onClose: _removeOverlay,
+      ),
+    );
+
+    // Insert the overlay
+    Overlay.of(context).insert(_overlayEntry!);
   }
 
   @override
@@ -114,13 +145,31 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
       if (_lastTapTime != null &&
           now.difference(_lastTapTime!).inMilliseconds < 500) {
         // This is a double tap - show options dialog
+        _removeOverlay(); // Make sure to remove any existing brief info
         _showEventOptionsDialog(appointment);
         _lastTapTime = null;
       } else {
+        // This is a single tap - show brief info
         _lastTapTime = now;
+
+        try {
+          final eventId = appointment.id.toString();
+          final event = widget.events.firstWhere((e) => e.id == eventId);
+
+          // We need to use post-frame callback to ensure the overlay is created
+          // after the current frame is finished building
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showEventBriefInfo(event);
+          });
+        } catch (e) {
+          debugPrint('Error showing brief info: $e');
+        }
       }
     } else if (details.targetElement == CalendarElement.calendarCell &&
         details.date != null) {
+      // Remove any existing brief info when tapping on empty cell
+      _removeOverlay();
+
       // Create new event when clicking on empty cell
       final snappedTime = _snapTimeToInterval(details.date!);
       final endTime =
@@ -131,6 +180,9 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
   }
 
   void _handleDragEnd(AppointmentDragEndDetails details) {
+    // Remove any existing brief info when dragging
+    _removeOverlay();
+
     try {
       final Appointment appointment = details.appointment as Appointment;
       String appointmentId = appointment.id.toString();
@@ -271,6 +323,9 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
   }
 
   void _handleCalendarLongPress(CalendarLongPressDetails details) {
+    // Remove any existing brief info on long press
+    _removeOverlay();
+
     if (details.targetElement == CalendarElement.appointment) {
       // Long press behavior is handled by the built-in drag & drop
     } else if (details.targetElement == CalendarElement.calendarCell) {
@@ -287,7 +342,8 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
   }
 
   void _handleAppointmentResizeStart(AppointmentResizeStartDetails details) {
-    // Optional: Add any special behavior when resize starts
+    // Remove any existing brief info when resizing
+    _removeOverlay();
   }
 
   void _handleAppointmentResizeUpdate(AppointmentResizeUpdateDetails details) {
@@ -327,7 +383,8 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
   }
 
   void _handleDragStart(AppointmentDragStartDetails details) {
-    // Optional: Add any special behavior when drag starts
+    // Remove any existing brief info when starting to drag
+    _removeOverlay();
   }
 
   void _handleDragUpdate(AppointmentDragUpdateDetails details) {
