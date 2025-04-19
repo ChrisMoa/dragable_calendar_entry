@@ -29,7 +29,6 @@ class DraggableCalendar extends StatefulWidget {
 class _DraggableCalendarState extends State<DraggableCalendar> {
   late CalendarController _calendarController;
   final _uuid = const Uuid();
-  DateTime? _lastTapTime;
   EventModel? _selectedEvent;
   final Offset _tapPosition = Offset.zero;
   OverlayEntry? _overlayEntry;
@@ -52,13 +51,73 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
     _overlayEntry = null;
   }
 
-  void _showEventBriefInfo(EventModel event) {
+  void _showEventBriefInfo(EventModel event, Appointment appointment) {
     // Remove any existing overlay first
     _removeOverlay();
 
-    // Position the popup in the center of the screen with a slight offset
+    // Get the calendar widget's position and size
+    final RenderBox calendarRenderBox = context.findRenderObject() as RenderBox;
+    final calendarPosition = calendarRenderBox.localToGlobal(Offset.zero);
+    final calendarSize = calendarRenderBox.size;
+
+    // Calculate the event's position in the calendar
+    Offset position;
+
+    // Try to find the appointment's position based on the current view
+    switch (_calendarController.view) {
+      case CalendarView.day:
+      case CalendarView.week:
+      case CalendarView.workWeek:
+        // For day/week views, calculate vertical position based on time
+        final dayHeight = calendarSize.height;
+        final startHour = 7.0; // From the TimeSlotViewSettings
+        final endHour = 20.0; // From the TimeSlotViewSettings
+        final totalHours = endHour - startHour;
+
+        final startTimeHour =
+            appointment.startTime.hour + (appointment.startTime.minute / 60.0);
+        final relativePosition = (startTimeHour - startHour) / totalHours;
+        final yPosition = calendarPosition.dy + (dayHeight * relativePosition);
+
+        // Position horizontally at 25% of calendar width, but not off-screen
+        final xPosition = calendarPosition.dx + (calendarSize.width * 0.25);
+        position = Offset(xPosition, yPosition);
+        break;
+
+      case CalendarView.month:
+      case CalendarView.schedule:
+      case CalendarView.timelineDay:
+      case CalendarView.timelineWeek:
+      case CalendarView.timelineWorkWeek:
+      case CalendarView.timelineMonth:
+      default:
+        // For other views, position near the center of the calendar
+        position = Offset(
+          calendarPosition.dx + calendarSize.width * 0.25,
+          calendarPosition.dy + calendarSize.height * 0.3,
+        );
+        break;
+    }
+
+    // Ensure the popup won't go off-screen
     final screenSize = MediaQuery.of(context).size;
-    final position = Offset(screenSize.width * 0.2, screenSize.height * 0.3);
+    final maxWidth = screenSize.width * 0.8;
+
+    if (position.dx + maxWidth > screenSize.width) {
+      position = Offset(screenSize.width - maxWidth - 20, position.dy);
+    }
+
+    if (position.dx < 10) {
+      position = Offset(10, position.dy);
+    }
+
+    if (position.dy < 10) {
+      position = Offset(position.dx, 10);
+    }
+
+    if (position.dy > screenSize.height - 200) {
+      position = Offset(position.dx, screenSize.height - 200);
+    }
 
     // Create the overlay entry
     _overlayEntry = OverlayEntry(
@@ -66,6 +125,10 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
         event: event,
         position: position,
         onClose: _removeOverlay,
+        onEdit: _showEditEventDialog,
+        onDuplicate: (event) => _showDuplicateDialogFromEvent(event),
+        onDelete: (event) =>
+            context.read<EventBloc>().add(EventDelete(event.id)),
       ),
     );
 
@@ -140,30 +203,16 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
         details.appointments!.isNotEmpty) {
       final Appointment appointment = details.appointments![0];
 
-      // Detect double tap by measuring time between taps
-      final now = DateTime.now();
-      if (_lastTapTime != null &&
-          now.difference(_lastTapTime!).inMilliseconds < 500) {
-        // This is a double tap - show options dialog
-        _removeOverlay(); // Make sure to remove any existing brief info
-        _showEventOptionsDialog(appointment);
-        _lastTapTime = null;
-      } else {
-        // This is a single tap - show brief info
-        _lastTapTime = now;
+      try {
+        final eventId = appointment.id.toString();
+        final event = widget.events.firstWhere((e) => e.id == eventId);
 
-        try {
-          final eventId = appointment.id.toString();
-          final event = widget.events.firstWhere((e) => e.id == eventId);
-
-          // We need to use post-frame callback to ensure the overlay is created
-          // after the current frame is finished building
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _showEventBriefInfo(event);
-          });
-        } catch (e) {
-          debugPrint('Error showing brief info: $e');
-        }
+        // Show brief info with actions
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showEventBriefInfo(event, appointment);
+        });
+      } catch (e) {
+        debugPrint('Error showing brief info: $e');
       }
     } else if (details.targetElement == CalendarElement.calendarCell &&
         details.date != null) {
@@ -220,54 +269,6 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
     }
   }
 
-  void _showEventOptionsDialog(Appointment appointment) {
-    try {
-      final originalEvent = widget.events.firstWhere(
-        (event) => event.id == appointment.id.toString(),
-      );
-
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(originalEvent.title),
-          content: const Text('What would you like to do with this event?'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-
-                // Show dialog to edit the event
-                _showEditEventDialog(originalEvent);
-              },
-              child: const Text('Edit'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-
-                // Show dialog to duplicate the event
-                _showDuplicateDialog(appointment);
-              },
-              child: const Text('Duplicate'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-
-                // Show confirmation dialog for deletion
-                _showDeleteConfirmationDialog(originalEvent);
-              },
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('Delete'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      debugPrint('Error showing event options dialog: $e');
-    }
-  }
-
   void _showEditEventDialog(EventModel event) {
     showDialog(
       context: context,
@@ -292,32 +293,6 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
 
           context.read<EventBloc>().add(EventUpdate(updatedEvent));
         },
-      ),
-    );
-  }
-
-  void _showDeleteConfirmationDialog(EventModel event) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Event'),
-        content: Text('Are you sure you want to delete "${event.title}"?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-            },
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              context.read<EventBloc>().add(EventDelete(event.id));
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
       ),
     );
   }
@@ -417,37 +392,29 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
     );
   }
 
-  void _showDuplicateDialog(Appointment appointment) {
-    try {
-      final originalEvent = widget.events.firstWhere(
-        (event) => event.id == appointment.id.toString(),
-      );
+  void _showDuplicateDialogFromEvent(EventModel originalEvent) {
+    showDialog(
+      context: context,
+      builder: (context) => EventEditDialog(
+        title: 'Copy - ${originalEvent.title}',
+        description: originalEvent.description,
+        startTime: originalEvent.start,
+        endTime: originalEvent.end,
+        color: originalEvent.color,
+        onSave: (title, description, start, end, color) {
+          final newEvent = EventModel(
+            id: _uuid.v4(),
+            title: title,
+            description: description,
+            start: start,
+            end: end,
+            color: color,
+          );
 
-      showDialog(
-        context: context,
-        builder: (context) => EventEditDialog(
-          title: 'Copy - ${originalEvent.title}',
-          description: originalEvent.description,
-          startTime: originalEvent.start,
-          endTime: originalEvent.end,
-          color: originalEvent.color,
-          onSave: (title, description, start, end, color) {
-            final newEvent = EventModel(
-              id: _uuid.v4(),
-              title: title,
-              description: description,
-              start: start, // Use the dates directly from the dialog
-              end: end, // without additional snapping (already done in dialog)
-              color: color,
-            );
-
-            context.read<EventBloc>().add(EventAdd(newEvent));
-          },
-        ),
-      );
-    } catch (e) {
-      debugPrint('Error showing duplicate dialog: $e');
-    }
+          context.read<EventBloc>().add(EventAdd(newEvent));
+        },
+      ),
+    );
   }
 }
 

@@ -7,12 +7,18 @@ class EventBriefInfo extends StatefulWidget {
   final EventModel event;
   final VoidCallback onClose;
   final Offset position;
+  final Function(EventModel) onEdit;
+  final Function(EventModel) onDuplicate;
+  final Function(EventModel) onDelete;
 
   const EventBriefInfo({
     super.key,
     required this.event,
     required this.onClose,
     required this.position,
+    required this.onEdit,
+    required this.onDuplicate,
+    required this.onDelete,
   });
 
   @override
@@ -30,7 +36,7 @@ class _EventBriefInfoState extends State<EventBriefInfo>
     super.initState();
 
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 333),
       vsync: this,
     );
 
@@ -54,6 +60,45 @@ class _EventBriefInfoState extends State<EventBriefInfo>
   void dispose() {
     _animationController.dispose();
     super.dispose();
+  }
+
+  void _showEditDialog() {
+    widget.onClose(); // Close the popup first
+    widget.onEdit(widget.event);
+  }
+
+  void _showDuplicateDialog() {
+    widget.onClose(); // Close the popup first
+    widget.onDuplicate(widget.event);
+  }
+
+  void _showDeleteConfirmation() {
+    widget.onClose(); // Close the popup first
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Event'),
+        content:
+            Text('Are you sure you want to delete "${widget.event.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              widget.onDelete(widget.event);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -159,6 +204,41 @@ class _EventBriefInfoState extends State<EventBriefInfo>
                             style: const TextStyle(fontSize: 14),
                           ),
                         ],
+                        const SizedBox(height: 16),
+                        // Action buttons
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton.icon(
+                              onPressed: _showEditDialog,
+                              icon: const Icon(Icons.edit, size: 18),
+                              label: const Text('Edit'),
+                              style: TextButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8),
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: _showDuplicateDialog,
+                              icon: const Icon(Icons.copy, size: 18),
+                              label: const Text('Duplicate'),
+                              style: TextButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8),
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: _showDeleteConfirmation,
+                              icon: const Icon(Icons.delete, size: 18),
+                              label: const Text('Delete'),
+                              style: TextButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8),
+                                foregroundColor: Colors.red,
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
