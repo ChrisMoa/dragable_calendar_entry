@@ -6,16 +6,19 @@ import 'package:uuid/uuid.dart';
 import '../blocs/event/event_bloc.dart';
 import '../blocs/event/event_event.dart';
 import '../models/event_model.dart';
+import '../utils/time_utils.dart';
 import 'event_edit_dialog.dart';
 
 class DraggableCalendar extends StatefulWidget {
   final CalendarViewType calendarViewType;
   final List<EventModel> events;
+  final int timeSnapInterval; // In minutes
 
   const DraggableCalendar({
     super.key,
     required this.calendarViewType,
     required this.events,
+    this.timeSnapInterval = 15, // Default to 15 minutes
   });
 
   @override
@@ -47,6 +50,13 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
       dataSource: _getCalendarDataSource(),
       allowDragAndDrop: true,
       allowAppointmentResize: true,
+      timeSlotViewSettings: TimeSlotViewSettings(
+        timeInterval: Duration(minutes: widget.timeSnapInterval),
+        timeIntervalHeight: 50,
+        timeFormat: 'HH:mm',
+        startHour: 7,
+        endHour: 20,
+      ),
       monthViewSettings: const MonthViewSettings(
         appointmentDisplayMode: MonthAppointmentDisplayMode.appointment,
       ),
@@ -89,6 +99,10 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
     return _AppointmentDataSource(appointments);
   }
 
+  DateTime _snapTimeToInterval(DateTime time) {
+    return TimeUtils.snapToInterval(time, widget.timeSnapInterval);
+  }
+
   void _handleCalendarTap(CalendarTapDetails details) {
     if (details.targetElement == CalendarElement.appointment &&
         details.appointments != null &&
@@ -105,6 +119,14 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
       } else {
         _lastTapTime = now;
       }
+    } else if (details.targetElement == CalendarElement.calendarCell &&
+        details.date != null) {
+      // Create new event when clicking on empty cell
+      final snappedTime = _snapTimeToInterval(details.date!);
+      final endTime =
+          snappedTime.add(Duration(minutes: widget.timeSnapInterval));
+
+      _showAddEventDialog(snappedTime, endTime);
     }
   }
 
@@ -115,11 +137,12 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
       // Create a new appointment on long press on an empty cell
       final DateTime date = details.date!;
 
-      // Creating a 1-hour appointment at the tapped time
-      final DateTime startTime = date;
-      final DateTime endTime = startTime.add(const Duration(hours: 1));
+      // Snap the time to the nearest interval
+      final DateTime snappedTime = _snapTimeToInterval(date);
+      final DateTime endTime =
+          snappedTime.add(Duration(minutes: widget.timeSnapInterval));
 
-      _showAddEventDialog(startTime, endTime);
+      _showAddEventDialog(snappedTime, endTime);
     }
   }
 
@@ -128,27 +151,38 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
   }
 
   void _handleAppointmentResizeUpdate(AppointmentResizeUpdateDetails details) {
-    // Optional: Add any special behavior during resize
+    // Optional: Visual feedback during resize
   }
 
   void _handleAppointmentResizeEnd(AppointmentResizeEndDetails details) {
-    final Appointment appointment = details.appointment as Appointment;
-
     try {
-      final EventModel originalEvent = widget.events.firstWhere(
-        (event) => event.id == appointment.id.toString(),
-      );
+      final Appointment appointment = details.appointment as Appointment;
+      String appointmentId = appointment.id.toString();
 
-      final EventModel updatedEvent = originalEvent.copyWith(
-        start: details.startTime,
-        end: details.endTime,
-      );
+      // Use appointment's times as fallback if details.startTime or details.endTime are null
+      final DateTime startTime = details.startTime ?? appointment.startTime;
+      final DateTime endTime = details.endTime ?? appointment.endTime;
 
-      context.read<EventBloc>().add(
-            EventUpdate(updatedEvent),
-          );
+      // Snap both start and end times to intervals
+      final DateTime snappedStartTime = _snapTimeToInterval(startTime);
+      final DateTime snappedEndTime = _snapTimeToInterval(endTime);
+
+      if (widget.events.any((event) => event.id == appointmentId)) {
+        final EventModel originalEvent = widget.events.firstWhere(
+          (event) => event.id == appointmentId,
+        );
+
+        final EventModel updatedEvent = originalEvent.copyWith(
+          start: snappedStartTime,
+          end: snappedEndTime,
+        );
+
+        context.read<EventBloc>().add(
+              EventUpdate(updatedEvent),
+            );
+      }
     } catch (e) {
-      debugPrint('Error finding event: $e');
+      debugPrint('Error in resize end: $e');
     }
   }
 
@@ -157,7 +191,7 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
   }
 
   void _handleDragUpdate(AppointmentDragUpdateDetails details) {
-    // Optional: Add any special behavior during drag
+    // Optional: Visual feedback during drag
   }
 
   void _handleDragEnd(AppointmentDragEndDetails details) {
@@ -165,10 +199,16 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
       final Appointment appointment = details.appointment as Appointment;
       String appointmentId = appointment.id.toString();
 
-      // Get the new times from the appointment itself, which has been updated
-      // by the drag operation
-      final DateTime newStartTime = appointment.startTime;
-      final DateTime newEndTime = appointment.endTime;
+      // Ensure we have valid times by using the appointment's times if needed
+      final DateTime startTime = appointment.startTime;
+      final DateTime endTime = appointment.endTime;
+
+      // Get the times from the appointment and snap them to intervals
+      final DateTime newStartTime = _snapTimeToInterval(startTime);
+
+      // Calculate the duration to preserve it
+      final Duration eventDuration = endTime.difference(startTime);
+      final DateTime newEndTime = newStartTime.add(eventDuration);
 
       if (widget.events.any((event) => event.id == appointmentId)) {
         final EventModel originalEvent = widget.events.firstWhere(
@@ -196,12 +236,16 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
         startTime: startTime,
         endTime: endTime,
         onSave: (title, description, start, end, color) {
+          // Snap the times to intervals when saving a new event
+          final snappedStart = _snapTimeToInterval(start);
+          final snappedEnd = _snapTimeToInterval(end);
+
           final newEvent = EventModel(
             id: _uuid.v4(),
             title: title,
             description: description,
-            start: start,
-            end: end,
+            start: snappedStart,
+            end: snappedEnd,
             color: color,
           );
 
@@ -226,12 +270,16 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
           endTime: originalEvent.end,
           color: originalEvent.color,
           onSave: (title, description, start, end, color) {
+            // Snap the times to intervals when duplicating
+            final snappedStart = _snapTimeToInterval(start);
+            final snappedEnd = _snapTimeToInterval(end);
+
             final newEvent = EventModel(
               id: _uuid.v4(),
               title: title,
               description: description,
-              start: start,
-              end: end,
+              start: snappedStart,
+              end: snappedEnd,
               color: color,
             );
 
@@ -261,7 +309,7 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
             onPressed: () {
               Navigator.of(context).pop();
 
-              // Move the event
+              // Move the event with snapped times
               final updatedEvent = event.copyWith(
                 start: newStart,
                 end: newEnd,
@@ -277,7 +325,7 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
             onPressed: () {
               Navigator.of(context).pop();
 
-              // Duplicate the event at the new time
+              // Duplicate the event at the new time with snapped times
               context.read<EventBloc>().add(
                     EventDuplicate(
                       event.id,
