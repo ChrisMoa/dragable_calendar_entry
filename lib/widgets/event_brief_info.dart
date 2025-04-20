@@ -1,5 +1,11 @@
-import 'package:flutter/material.dart';
+import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import '../blocs/event/event_bloc.dart';
+import '../blocs/event/event_event.dart';
 import '../models/event_model.dart';
 import '../utils/date_utils.dart';
 
@@ -30,10 +36,16 @@ class _EventBriefInfoState extends State<EventBriefInfo>
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
+  int _durationMinutes = 0;
+  late EventModel _eventCopy;
 
   @override
   void initState() {
     super.initState();
+
+    // Initialize the local event copy and duration
+    _eventCopy = widget.event;
+    _durationMinutes = _eventCopy.end.difference(_eventCopy.start).inMinutes;
 
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 333),
@@ -60,45 +72,6 @@ class _EventBriefInfoState extends State<EventBriefInfo>
   void dispose() {
     _animationController.dispose();
     super.dispose();
-  }
-
-  void _showEditDialog() {
-    widget.onClose(); // Close the popup first
-    widget.onEdit(widget.event);
-  }
-
-  void _showDuplicateDialog() {
-    widget.onClose(); // Close the popup first
-    widget.onDuplicate(widget.event);
-  }
-
-  void _showDeleteConfirmation() {
-    widget.onClose(); // Close the popup first
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Event'),
-        content:
-            Text('Are you sure you want to delete "${widget.event.title}"?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-            },
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              widget.onDelete(widget.event);
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -147,7 +120,7 @@ class _EventBriefInfoState extends State<EventBriefInfo>
                     ),
                   ],
                   border: Border.all(
-                    color: widget.event.color.withOpacity(0.5),
+                    color: _eventCopy.color.withOpacity(0.5),
                     width: 2,
                   ),
                 ),
@@ -165,14 +138,14 @@ class _EventBriefInfoState extends State<EventBriefInfo>
                               width: 12,
                               height: 12,
                               decoration: BoxDecoration(
-                                color: widget.event.color,
+                                color: _eventCopy.color,
                                 shape: BoxShape.circle,
                               ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                widget.event.title,
+                                _eventCopy.title,
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
@@ -191,19 +164,23 @@ class _EventBriefInfoState extends State<EventBriefInfo>
                         const SizedBox(height: 8),
                         Text(
                           DateTimeUtils.formatDateRange(
-                              widget.event.start, widget.event.end),
+                              _eventCopy.start, _eventCopy.end),
                           style: TextStyle(
                             color: Colors.grey[700],
                             fontSize: 14,
                           ),
                         ),
-                        if (widget.event.description.isNotEmpty) ...[
+                        if (_eventCopy.description.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           Text(
-                            widget.event.description,
+                            _eventCopy.description,
                             style: const TextStyle(fontSize: 14),
                           ),
                         ],
+
+                        // Add the duration controls
+                        _buildDurationControls(),
+
                         const SizedBox(height: 16),
                         // Action buttons
                         Row(
@@ -246,6 +223,112 @@ class _EventBriefInfoState extends State<EventBriefInfo>
               ),
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  void _showEditDialog() {
+    widget.onClose(); // Close the popup first
+    widget.onEdit(_eventCopy);
+  }
+
+  void _showDuplicateDialog() {
+    widget.onClose(); // Close the popup first
+    widget.onDuplicate(_eventCopy);
+  }
+
+  void _showDeleteConfirmation() {
+    widget.onClose(); // Close the popup first
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Event'),
+        content: Text('Are you sure you want to delete "${_eventCopy.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              widget.onDelete(_eventCopy);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDurationControls() {
+    // Only show on mobile
+    final bool isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+    if (!isMobile) return const SizedBox.shrink();
+
+    // Use 15 minutes as default interval
+    const int timeInterval = 15;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 24),
+        const Text('Adjust Duration:',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.remove_circle_outline),
+              constraints: const BoxConstraints(),
+              padding: const EdgeInsets.all(8),
+              onPressed: _durationMinutes <= timeInterval
+                  ? null
+                  : () {
+                      // Decrease duration by one interval
+                      setState(() {
+                        _durationMinutes -= timeInterval;
+                        final newEnd = _eventCopy.start
+                            .add(Duration(minutes: _durationMinutes));
+                        _eventCopy = _eventCopy.copyWith(end: newEnd);
+                      });
+
+                      // Update the event in the bloc
+                      context.read<EventBloc>().add(EventUpdate(_eventCopy));
+                    },
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                '${_durationMinutes ~/ 60}h ${_durationMinutes % 60}m',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              constraints: const BoxConstraints(),
+              padding: const EdgeInsets.all(8),
+              onPressed: () {
+                // Increase duration by one interval
+                setState(() {
+                  _durationMinutes += timeInterval;
+                  final newEnd =
+                      _eventCopy.start.add(Duration(minutes: _durationMinutes));
+                  _eventCopy = _eventCopy.copyWith(end: newEnd);
+                });
+
+                // Update the event in the bloc
+                context.read<EventBloc>().add(EventUpdate(_eventCopy));
+              },
+            ),
+          ],
         ),
       ],
     );
