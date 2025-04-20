@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
@@ -61,25 +63,74 @@ class EventBloc extends Bloc<EventBlocEvent, EventState> {
     ));
   }
 
-  // Helper method to generate sample events
-  static List<EventModel> generateSampleEvents() {
+  static List<EventModel> generateSampleEvents([int samples = 5]) {
     final List<EventModel> events = [];
     final now = DateTime.now();
     final uuid = Uuid();
+    final random = Random();
 
-    // Today's events
-    events.add(
-      EventModel(
-        id: uuid.v4(),
-        title: 'Morning Meeting',
-        description: 'Daily team standup',
-        start: DateTime(now.year, now.month, now.day, 9, 0),
-        end: DateTime(now.year, now.month, now.day, 10, 0),
-        color: Colors.blue,
-      ),
-    );
+    // Sample event templates
+    final eventTemplates = [
+      {
+        'title': 'Morning Meeting',
+        'description': 'Daily team standup',
+        'color': Colors.blue,
+      },
+      {
+        'title': 'Lunch with Client',
+        'description': 'Discuss new project requirements',
+        'color': Colors.green,
+      },
+      {
+        'title': 'Project Review',
+        'description': 'End of sprint review',
+        'color': Colors.orange,
+      },
+      {
+        'title': 'Team Building',
+        'description': 'Office games and activities',
+        'color': Colors.purple,
+      },
+      {
+        'title': 'Conference Call',
+        'description': 'International partners sync',
+        'color': Colors.red,
+      },
+    ];
 
-    // Add more events as needed
+    // Generate random events
+    for (int i = 0; i < samples; i++) {
+      // Pick a random template
+      final templateIndex = random.nextInt(eventTemplates.length);
+      final template = eventTemplates[templateIndex];
+
+      // Generate random date (-7 to +14 days from now)
+      final daysOffset = random.nextInt(21) - 7;
+      final eventDate = now.add(Duration(days: daysOffset));
+
+      // Generate random start time (7am to 6pm)
+      final startHour = 7 + random.nextInt(11);
+      final startMinute =
+          [0, 15, 30, 45][random.nextInt(4)]; // Quarter-hour intervals
+
+      // Generate random duration (30min to 2.5 hours)
+      final durationMinutes = 30 + random.nextInt(5) * 30; // 30min increments
+
+      final startTime = DateTime(eventDate.year, eventDate.month, eventDate.day,
+          startHour.toInt(), startMinute);
+      final endTime = startTime.add(Duration(minutes: durationMinutes.toInt()));
+
+      events.add(
+        EventModel(
+          id: uuid.v4(),
+          title: template['title'] as String,
+          description: template['description'] as String,
+          start: startTime,
+          end: endTime,
+          color: template['color'] as Color,
+        ),
+      );
+    }
 
     return events;
   }
