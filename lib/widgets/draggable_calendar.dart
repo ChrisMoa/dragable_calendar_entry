@@ -416,6 +416,16 @@ class _DraggableCalendarState extends State<DraggableCalendar> {
       ),
     );
   }
+
+  @override
+  void didUpdateWidget(DraggableCalendar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Update the calendar view if it changed
+    if (oldWidget.calendarViewType != widget.calendarViewType) {
+      _calendarController.view = _getCalendarView();
+    }
+  }
 }
 
 class _AppointmentDataSource extends CalendarDataSource {
