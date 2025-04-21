@@ -1,0 +1,2 @@
+D:/Projects/dragable_calendar_entry/example/android/app/.cxx/Debug/3w6g3z1g/x86_64/CMakeFiles/edit_cache.dir
+D:/Projects/dragable_calendar_entry/example/android/app/.cxx/Debug/3w6g3z1g/x86_64/CMakeFiles/rebuild_cache.dir
