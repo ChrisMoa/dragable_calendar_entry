@@ -5,6 +5,7 @@ This package is based on Syncfusion Flutter Calendar, providing enhanced draggab
 > **Note**: This project utilizes Syncfusion Flutter Calendar as its foundation. Users of this package must comply with both GPL-3.0 and Syncfusion's licensing requirements.
 
 [![pub package](https://img.shields.io/pub/v/draggable_calendar.svg)](https://pub.dev/packages/draggable_calendar)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
 
