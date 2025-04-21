@@ -1,0 +1,23 @@
+name: draggable_calendar_test
+description: Tests for the draggable_calendar package
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  draggable_calendar:
+    path: ../  # This points to the root package
+  flutter_bloc: ^9.1.0
+  equatable: ^2.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  mockito: ^5.4.0
+  build_runner: ^2.4.6
+  bloc_test: ^10.0.0

@@ -1,19 +1,20 @@
-name: dragable_calendar_entry
-description: A Flutter calendar with draggable events
-publish_to: 'none'
-version: 1.0.0+1
+name: draggable_calendar
+description: A Flutter package for a draggable calendar with event management capabilities
+version: 0.1.0
+homepage: https://github.com/yourusername/draggable_calendar
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  syncfusion_flutter_calendar: ^29.1.38
+  equatable: ^2.0.0
   flutter_bloc: ^9.1.0
-  equatable: ^2.0.5
   intl: ^0.20.2
-  uuid: ^4.2.1
+  syncfusion_flutter_calendar: ">=20.0.0 <30.0.0"
+  uuid: ^4.0.0
 
 dev_dependencies:
   flutter_test:
@@ -21,4 +22,3 @@ dev_dependencies:
   flutter_lints: ^5.0.0
 
 flutter:
-  uses-material-design: true
